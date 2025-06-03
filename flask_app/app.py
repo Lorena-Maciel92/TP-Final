@@ -1,54 +1,30 @@
-from flask import Flask, request, Response
-from flasgger import Swagger
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+import os
+
+# Cargar API_KEY desde .env
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
 
 app = Flask(__name__)
-swagger = Swagger(app)
 
-USUARIO = "admin"
-PASSWORD = "secreto"
+# Lista de IPs permitidas
+ALLOWED_IPS = ["127.0.0.1"]
 
-def autenticar():
-    mensaje = {'mensaje': "Autenticación requerida."}
-    return Response(str(mensaje), 401, {"WWW-Authenticate": "Basic realm='Login Required'"})
+# Middleware antes de cada request
+@app.before_request
+def validar_ip():
+    ip_cliente = request.remote_addr
+    if ip_cliente not in ALLOWED_IPS:
+        return jsonify({"error": f"IP {ip_cliente} no autorizada"}), 403
 
-def verificar_auth(usuario, password):
-    return usuario == USUARIO and password == PASSWORD
-
-def requiere_auth(f):
-    def decorador(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not verificar_auth(auth.username, auth.password):
-            return autenticar()
-        return f(*args, **kwargs)
-    decorador.__name__ = f.__name__
-    return decorador
-
-@app.route("/")
-def publico():
-    """
-    Ruta pública sin autenticación.
-    ---
-    responses:
-      200:
-        description: Éxito
-    """
-    return "Ruta pública: no requiere autenticación."
-
-@app.route("/privado")
-@requiere_auth
-def privado():
-    """
-    Ruta protegida por autenticación básica.
-    ---
-    security:
-      - BasicAuth: []
-    responses:
-      200:
-        description: Acceso autorizado
-      401:
-        description: No autorizado
-    """
-    return "Ruta protegida: acceso autorizado."
+# Ruta protegida por API Key
+@app.route("/protegido")
+def protegido():
+    key = request.headers.get("X-API-Key")
+    if key != API_KEY:
+        return jsonify({"error": "API Key incorrecta"}), 401
+    return jsonify({"mensaje": "Acceso permitido"})
 
 if __name__ == "__main__":
     app.run(debug=True)
